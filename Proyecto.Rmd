@@ -7,11 +7,42 @@ output: pdf_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+install.packages("here")
 ```
-```{r}
-trabajadores <- readxl::read_excel("Grizzly/Matematica Actuarial I/Proyecto/Datos_Proyecto_v2.xlsx", sheet = "Trabajadores")
-mortalidad <- readxl::read_excel("Grizzly/Matematica Actuarial I/Proyecto/Datos_Proyecto_v2.xlsx", sheet = "Mortalidad")
-jubilados <- readxl::read_excel("Grizzly/Matematica Actuarial I/Proyecto/Datos_Proyecto_v2.xlsx", sheet = "Jubilados")
 
-```
+```{r}
+here::set_here();
+trabajadores <- readxl::read_excel(paste0(here::here(),"/Datos_Proyecto_v2.xlsx"), sheet = "Trabajadores")
+mortalidad <- readxl::read_excel(paste0(here::here(),"/Datos_Proyecto_v2.xlsx"), sheet = "Mortalidad")
+jubilados <- readxl::read_excel(paste0(here::here(),"/Datos_Proyecto_v2.xlsx"), sheet = "Jubilados")
+
+hoy <- as.Date("2017-12-31")
+
+trabajadores <- dplyr::mutate(trabajadores, FECINGRESO = as.Date(FECINGRESO, format = "%d-%m-%y"))
+trabajadores <- dplyr::mutate(trabajadores, FECNAC = as.Date(FECNAC,  format = "%d-%m-%y"))
+trabajadores <- dplyr::mutate(trabajadores, NUMFECINGRESO = as.numeric(FECINGRESO))
+trabajadores <- dplyr::mutate(trabajadores, NUMFECNAC = as.numeric(FECNAC))
+
+trabajadores <- dplyr::mutate(trabajadores, NUMEDADINGRESO = NUMFECINGRESO - NUMFECNAC)
+trabajadores <- dplyr::mutate(trabajadores, EDADINGRESO = NUMEDADINGRESO/365)
+
+
+trabajadores$FECINGRESO[1]
+
+yearVec = 1998:2030
+
+errorHB <- function(k){
+  year = as.character.numeric_version(k)
+  a <- as.numeric(as.Date("1998-07-31"))
+  b <- as.numeric(as.Date(paste0(year,"-07-31")))
+  c <- as.numeric(as.Date(paste0(year,"-07-30")))
+  d = ((b-a)/365.25) - floor((b-a)/365.25)
+  e = ((c-a)/365.25) - floor((c-a)/365.25)
+  f = (d+e)/2  
+}
+
+errorVec <- Vectorize(errorHB)(yearVec)
+errorVec
+
+  ```
 
