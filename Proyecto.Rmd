@@ -12,5 +12,6 @@ knitr::opts_chunk$set(echo = TRUE)
 trabajadores <- readxl::read_excel("Grizzly/Matematica Actuarial I/Proyecto/Datos_Proyecto_v2.xlsx", sheet = "Trabajadores")
 mortalidad <- readxl::read_excel("Grizzly/Matematica Actuarial I/Proyecto/Datos_Proyecto_v2.xlsx", sheet = "Mortalidad")
 jubilados <- readxl::read_excel("Grizzly/Matematica Actuarial I/Proyecto/Datos_Proyecto_v2.xlsx", sheet = "Jubilados")
+
 ```
 
