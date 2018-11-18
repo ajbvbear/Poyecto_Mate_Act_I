@@ -1,0 +1,16 @@
+---
+title: "Proyecto Actuariales"
+author: "Arnoldo Bustos, Humberto Jimenez"
+date: "17 de noviembre de 2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+trabajadores <- readxl::read_excel("Grizzly/Matematica Actuarial I/Proyecto/Datos_Proyecto_v2.xlsx", sheet = "Trabajadores")
+mortalidad <- readxl::read_excel("Grizzly/Matematica Actuarial I/Proyecto/Datos_Proyecto_v2.xlsx", sheet = "Mortalidad")
+jubilados <- readxl::read_excel("Grizzly/Matematica Actuarial I/Proyecto/Datos_Proyecto_v2.xlsx", sheet = "Jubilados")
+```
+
