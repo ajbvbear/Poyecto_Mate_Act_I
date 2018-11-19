@@ -1,41 +1,47 @@
 ---
-title: "Proyecto Actuariales"
-author: "Arnoldo Bustos, Humberto Jimenez"
-date: "17 de noviembre de 2018"
-output: pdf_document
+title: "Untitled"
+author: "Arnoldo Bustos"
+date: "18 de noviembre de 2018"
+output: html_document
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-install.packages("here")
 ```
-
 ```{r}
+
 here::set_here();
 trabajadores <- readxl::read_excel(paste0(here::here(),"/Datos_Proyecto_v2.xlsx"), sheet = "Trabajadores")
+colnames(trabajadores) <- c("ID","FEC_INGRESO","SEXO","FEC_NAC","SALARIO")
+
 mortalidad <- readxl::read_excel(paste0(here::here(),"/Datos_Proyecto_v2.xlsx"), sheet = "Mortalidad")
 jubilados <- readxl::read_excel(paste0(here::here(),"/Datos_Proyecto_v2.xlsx"), sheet = "Jubilados")
 
-hoy <- as.Date("2017-12-31")
+hoy <- as.numeric(as.Date("2017-12-31"))
 
-trabajadores <- dplyr::mutate(trabajadores, FECINGRESO = as.Date(FECINGRESO, format = "%d-%m-%y"))
-trabajadores <- dplyr::mutate(trabajadores, FECNAC = as.Date(FECNAC,  format = "%d-%m-%y"))
-trabajadores <- dplyr::mutate(trabajadores, NUMFECINGRESO = as.numeric(FECINGRESO))
-trabajadores <- dplyr::mutate(trabajadores, NUMFECNAC = as.numeric(FECNAC))
+trabajadores <- dplyr::mutate(trabajadores, FEC_INGRESO = as.Date(FEC_INGRESO, format = "%d-%m-%y"))
+trabajadores <- dplyr::mutate(trabajadores, FEC_NAC = as.Date(FEC_NAC,  format = "%d-%m-%y"))
+trabajadores <- dplyr::mutate(trabajadores, NUM_FEC_INGRESO = as.numeric(FEC_INGRESO))
+trabajadores <- dplyr::mutate(trabajadores, NUM_FEC_NAC = as.numeric(FEC_NAC))
 
-trabajadores <- dplyr::mutate(trabajadores, NUMEDADINGRESO = NUMFECINGRESO - NUMFECNAC)
-trabajadores <- dplyr::mutate(trabajadores, EDADINGRESO = NUMEDADINGRESO/365)
+trabajadores <- dplyr::mutate(trabajadores, NUM_EDAD_INGRESO = NUM_FEC_INGRESO - NUM_FEC_NAC)
+trabajadores <- dplyr::mutate(trabajadores, EDAD_INGRESO = NUM_EDAD_INGRESO/365.25)
+trabajadores <- dplyr::mutate(trabajadores, EDAD_HOY = (hoy - NUM_FEC_NAC)/365.25)
+trabajadores <- dplyr::mutate(trabajadores, AÑOS_REST = 65 - EDAD_HOY)
+trabajadores <- dplyr::mutate(trabajadores, DIAS_REST = AÑOS_REST * 365.25)
+
+
 
 
 trabajadores$FECINGRESO[1]
 
-yearVec = 1998:2030
+yearVec = 2001:2030
 
 errorHB <- function(k){
   year = as.character.numeric_version(k)
-  a <- as.numeric(as.Date("1998-07-31"))
-  b <- as.numeric(as.Date(paste0(year,"-07-31")))
-  c <- as.numeric(as.Date(paste0(year,"-07-30")))
+  a <- as.numeric(as.Date("2000-04-06"))
+  b <- as.numeric(as.Date(paste0(year,"-04-06")))
+  c <- as.numeric(as.Date(paste0(year,"-04-05")))
   d = ((b-a)/365.25) - floor((b-a)/365.25)
   e = ((c-a)/365.25) - floor((c-a)/365.25)
   f = (d+e)/2  
@@ -44,5 +50,4 @@ errorHB <- function(k){
 errorVec <- Vectorize(errorHB)(yearVec)
 errorVec
 
-  ```
-
+```
