@@ -2,36 +2,38 @@
 title: "Untitled"
 author: "Arnoldo Bustos"
 date: "18 de noviembre de 2018"
-output: html_document
+output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
+
 knitr::opts_chunk$set(echo = TRUE)
+
 ```
+
 ```{r}
 
 here::set_here();
-trabajadores <- readxl::read_excel(paste0(here::here(),"/Datos_Proyecto_v2.xlsx"), sheet = "Trabajadores")
-colnames(trabajadores) <- c("ID","FEC_INGRESO","SEXO","FEC_NAC","SALARIO")
 
-mortalidad <- readxl::read_excel(paste0(here::here(),"/Datos_Proyecto_v2.xlsx"), sheet = "Mortalidad")
-jubilados <- readxl::read_excel(paste0(here::here(),"/Datos_Proyecto_v2.xlsx"), sheet = "Jubilados")
+setwd("C:/Users/escan/OneDrive/Documentos/Grizzly/Matematica Actuarial I/Proyecto")
+
+here = "C:/Users/escan/OneDrive/Documentos/Grizzly/Matematica Actuarial I/Proyecto"
+
+trabajadores <- readxl::read_excel(paste0(here, "/Datos_Proyecto_v2.xlsx"), sheet = "Trabajadores")
+
+colnames(trabajadores) <- c("ID", "FEC_INGRESO", "SEXO", "FEC_NAC", "SALARIO")
+
+mortalidad <- readxl::read_excel(paste0(here,"/Datos_Proyecto_v2.xlsx"), sheet = "Mortalidad")
+
+jubilados <- readxl::read_excel(paste0(here,"/Datos_Proyecto_v2.xlsx"), sheet = "Jubilados")
 
 hoy <- as.numeric(as.Date("2017-12-31"))
 
 trabajadores <- dplyr::mutate(trabajadores, FEC_INGRESO = as.Date(FEC_INGRESO, format = "%d-%m-%y"))
+
 trabajadores <- dplyr::mutate(trabajadores, FEC_NAC = as.Date(FEC_NAC,  format = "%d-%m-%y"))
-trabajadores <- dplyr::mutate(trabajadores, NUM_FEC_INGRESO = as.numeric(FEC_INGRESO))
-trabajadores <- dplyr::mutate(trabajadores, NUM_FEC_NAC = as.numeric(FEC_NAC))
 
-trabajadores <- dplyr::mutate(trabajadores, NUM_EDAD_INGRESO = NUM_FEC_INGRESO - NUM_FEC_NAC)
-trabajadores <- dplyr::mutate(trabajadores, EDAD_INGRESO = NUM_EDAD_INGRESO/365.25)
-trabajadores <- dplyr::mutate(trabajadores, EDAD_HOY = (hoy - NUM_FEC_NAC)/365.25)
-trabajadores <- dplyr::mutate(trabajadores, AÑOS_REST = 65 - EDAD_HOY)
-trabajadores <- dplyr::mutate(trabajadores, DIAS_REST = AÑOS_REST * 365.25)
-
-
-
+trabajadores <- dplyr::mutate(trabajadores, FEC_PENSION = as.Date(paste0(as.character(as.numeric(format(FEC_NAC,"%Y")) + 65), format(FEC_NAC,"-%m-%d"))) )
 
 trabajadores$FECINGRESO[1]
 
@@ -49,5 +51,10 @@ errorHB <- function(k){
 
 errorVec <- Vectorize(errorHB)(yearVec)
 errorVec
+
+a = as.Date( "1997-12-26" )
+as.numeric(format(a,"%Y")) + 65
+format(a,"%d-%m-")
+format(a,"%m")
 
 ```
