@@ -1,8 +1,12 @@
 ---
-title: "Untitled"
-author: "Arnoldo Bustos"
+title: "Proyecto Actuariales"
+author: "Arnoldo Bustos, Humberto Jimenez"
 date: "18 de noviembre de 2018"
 output: pdf_document
+header-includes:
+    -\usepackage[utf8]{inputenc}
+    -\usepackage{amsmath,amssymb}
+    -\usepackage{actuarialsymbol}
 ---
 
 ```{r setup, include=FALSE}
@@ -13,9 +17,13 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r}
 
-here::set_here();
+# here = "C:/Users/Humberto/Downloads/Poyecto_Mate_Act_I-master"
 
-setwd("C:/Users/escan/OneDrive/Documentos/Grizzly/Matematica Actuarial I/Proyecto")
+
+library(lubridate)
+library(lifecontingencies)
+ 
+# Importa los datos brindados por la compañia 
 
 here = "C:/Users/escan/OneDrive/Documentos/Grizzly/Matematica Actuarial I/Proyecto"
 
@@ -23,38 +31,143 @@ trabajadores <- readxl::read_excel(paste0(here, "/Datos_Proyecto_v2.xlsx"), shee
 
 colnames(trabajadores) <- c("ID", "FEC_INGRESO", "SEXO", "FEC_NAC", "SALARIO")
 
-mortalidad <- readxl::read_excel(paste0(here,"/Datos_Proyecto_v2.xlsx"), sheet = "Mortalidad")
+mortalidad <- readxl::read_excel(paste0(here,"/Datos_Proyecto_v2.xlsx"), sheet = "Mortalidad", skip = 1 )
 
 jubilados <- readxl::read_excel(paste0(here,"/Datos_Proyecto_v2.xlsx"), sheet = "Jubilados")
 
-hoy <- as.numeric(as.Date("2017-12-31"))
+# Define la fecha a la que se realiza el estudio
+
+hoy <-as.Date("2017-12-31")
+
+# La inflación de largo plazo
+
+inflacion = 0.04
+
+# Tasa de crecimiento real de los salarios
+
+tasa_crec_salarios_real = 0.02
+
+# Tasa de crecimiento nominal de los salarios
+
+tasa_crec_salarios_nom = ((1+inflacion)*(1+tasa_interes_nom)) - 1
+
+# Tasa de descuento real
+
+tasa_desc_real = 0.03
+
+# Tasa de interes real
+
+tasa_interes_real =  (1/(1-tasa_desc_real)) - 1
+
+# Tasa de interes nominal
+
+tasa_interes_nominal = ((1+inflacion)*(1+tasa_interes_real)) - 1
+
+# Cambia el formato de las fechas a objetos .Date
 
 trabajadores <- dplyr::mutate(trabajadores, FEC_INGRESO = as.Date(FEC_INGRESO, format = "%d-%m-%y"))
 
 trabajadores <- dplyr::mutate(trabajadores, FEC_NAC = as.Date(FEC_NAC,  format = "%d-%m-%y"))
 
+# Calcula la fecha a partir de la cual puede pensionarse
+
 trabajadores <- dplyr::mutate(trabajadores, FEC_PENSION = as.Date(paste0(as.character(as.numeric(format(FEC_NAC,"%Y")) + 65), format(FEC_NAC,"-%m-%d"))) )
 
-trabajadores$FECINGRESO[1]
+# Convierte los datos de mortalidad en un objeto tipo actuarialtable
 
-yearVec = 2001:2030
+tablaVidaH = probs2lifetable(mortalidad$Hombres, radix = 10000, type = "qx")
+tablaActH = new("actuarialtable", i = tasa_interes_nominal, x = tablaVidaH@x, lx = tablaVidaH@lx)
 
-errorHB <- function(k){
-  year = as.character.numeric_version(k)
-  a <- as.numeric(as.Date("2000-04-06"))
-  b <- as.numeric(as.Date(paste0(year,"-04-06")))
-  c <- as.numeric(as.Date(paste0(year,"-04-05")))
-  d = ((b-a)/365.25) - floor((b-a)/365.25)
-  e = ((c-a)/365.25) - floor((c-a)/365.25)
-  f = (d+e)/2  
+tablaVidaM = probs2lifetable(mortalidad$Mujeres, radix = 10000, type = "qx")
+tablaActM = new("actuarialtable", i = tasa_interes_nominal, x = tablaVidaM@x, lx = tablaVidaM@lx)
+
+# Omega en la tabla de vida
+
+w = getOmega(tablaActH)
+
+# Factor de descuento nominal
+
+v_nom = 1/(1 + tasa_interes_nominal)
+  
+trabajadores <- trabajadores %>%
+  
+# Calcula la antiguedad de los trabajadores
+  
+  mutate(ANTIGUEDAD = year(FEC_PENSION) + month(FEC_PENSION) / 12 + day(FEC_PENSION) / 365 - year(FEC_INGRESO) - month(FEC_INGRESO) /12 - day(FEC_INGRESO) / 365) %>% 
+  
+# Categoriza a los empleados según su antiguedad
+  
+  mutate( CATEG = ifelse(ANTIGUEDAD < 10, 1, ifelse(ANTIGUEDAD < 20, 2, ifelse(ANTIGUEDAD < 30, 3, 4)))) %>%
+
+# Asigna a los empleados su porcentaje del salario según su antiguedad
+  
+  mutate( PORC_SAL_PENS = ifelse(ANTIGUEDAD < 10, 1, ifelse(ANTIGUEDAD < 20, 2, ifelse(ANTIGUEDAD < 30, 3, 4)))) %>%
+
+# Asigna el número de salarios para el capital de retiro según su antiguedad
+  
+  mutate( NUM_SAL_CAP_RET = ifelse(ANTIGUEDAD < 10, 1, ifelse(ANTIGUEDAD < 20, 2, ifelse(ANTIGUEDAD < 30, 3, 4)))) %>%
+  
+  
+# Calcula el salario sobre el cual se va a calcular la pensión.
+
+  mutate( SALARIO_PENSION = SALARIO*(tasa_crec_salarios_nom) ^ (year(FEC_PENSION) - 2017)) %>% 
+  
+# Calcula el tiempo restante para que la persona se pensione  
+  
+  mutate( TIEMPO_PARA_PENSION = year(FEC_PENSION) - 2018 + ((month(FEC_PENSION)-1)/12 + day(FEC_PENSION)/365)) %>%
+  
+# Corrige el tiempor para pensión de los trabajadores que no se han pensionado
+    
+  mutate( TIEMPO_PARA_PENSION = ifelse(TIEMPO_PARA_PENSION  > 0, TIEMPO_PARA_PENSION, 0)) %>%
+  
+# Calcula la edad actural del trabajador
+  
+mutate( EDAD = time_length(interval(FEC_NAC, hoy), unit = "year") )
+
+# Función que calcula la pensión para un trabajador
+
+
+valor_Presente_Pension = function(x,tablaAct){
+  costo_Pension_Anual <- function(r){
+    return(12 * axn(tablaAct, x = x, n = 1, m = r, k = 12) * (1 + inflacion) ^ r)
+  }
+    return( sum( Vectorize(costo_Pension_Anual)(0:(w-(x) ))))
 }
 
-errorVec <- Vectorize(errorHB)(yearVec)
-errorVec
+# Valor presente de una pensión de un hombre de 65 años
 
-a = as.Date( "1997-12-26" )
-as.numeric(format(a,"%Y")) + 65
-format(a,"%d-%m-")
-format(a,"%m")
+val_Pres_Trab_Hom_No_Jub = valor_Presente_Pension(65, tablaActH)
+
+# Monto de seguro de gastos funerarios
+
+seg_Fun = 1000000
+
+trabajadores <- trabajadores %>% 
+  
+# Valor presente de la pensión 
+  
+  mutate( VP_Pension = (v_nom ^ TIEMPO_PARA_PENSION) * 
+            (pxt(object = tablaActH, x = EDAD, t = TIEMPO_PARA_PENSION)) *
+            valor_Presente_Pension( 
+              ifelse( TIEMPO_PARA_PENSION == 0, EDAD, 65), 
+              ifelse( SEXO == M, tablaActH, tablaActM) ) * 
+            SALARIO_PENSION * PORC_SAL_PENS)  %>%
+
+# Valor presente del capital de retiro  
+    
+  mutate( VP_CAP_RET = (v_nom ^ TIEMPO_PARA_PENSION) * 
+            (pxt(object = tablaActH, x = EDAD, t = TIEMPO_PARA_PENSION)) *
+            SALARIO_PENSION *
+            NUM_SAL_CAP_RET ) %>%
+
+# Valor presente del seguro de gastos funerarios
+  
+  mutate( VP_SEG_FUN = seg_Fun * 
+            (v_nom ^ TIEMPO_PARA_PENSION) * 
+            pxt(object = tablaActH, x = EDAD, t = TIEMPO_PARA_PENSION)*
+            Axn(actuarialtable = ifelse( SEXO == M, tablaActH, tablaActM),
+                x = EDAD,
+                n = ) )
+
 
 ```
