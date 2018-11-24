@@ -22,6 +22,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 library(lubridate)
 library(lifecontingencies)
+library(dplyr)
  
 # Importa los datos brindados por la compañia 
 
@@ -49,7 +50,7 @@ tasa_crec_salarios_real = 0.02
 
 # Tasa de crecimiento nominal de los salarios
 
-tasa_crec_salarios_nom = ((1+inflacion)*(1+tasa_interes_nom)) - 1
+tasa_crec_salarios_nom = ((1+inflacion)*(1+tasa_crec_salarios_real)) - 1
 
 # Tasa de descuento real
 
@@ -71,7 +72,11 @@ trabajadores <- dplyr::mutate(trabajadores, FEC_NAC = as.Date(FEC_NAC,  format =
 
 # Calcula la fecha a partir de la cual puede pensionarse
 
-trabajadores <- dplyr::mutate(trabajadores, FEC_PENSION = as.Date(paste0(as.character(as.numeric(format(FEC_NAC,"%Y")) + 65), format(FEC_NAC,"-%m-%d"))) )
+trabajadores <- dplyr::mutate(trabajadores, FEC_PENSION = as.Date( paste0( as.character( as.numeric(format(FEC_NAC,"%Y")) + 65), format(FEC_NAC,"-%m-%d"))) )
+
+k = which(as.numeric(is.na(trabajadores$FEC_PENSION)) == 1)
+
+trabajadores$FEC_PENSION[k] = as.Date(paste0(as.character( as.numeric(format(trabajadores$FEC_NAC[k],"%Y")) + 65),"-02-28" ))
 
 # Convierte los datos de mortalidad en un objeto tipo actuarialtable
 
@@ -122,52 +127,112 @@ trabajadores <- trabajadores %>%
   
 # Calcula la edad actural del trabajador
   
-mutate( EDAD = time_length(interval(FEC_NAC, hoy), unit = "year") )
+  mutate( EDAD = time_length(interval(FEC_NAC, hoy), unit = "year") ) %>%
+
+# Calcula el factor de descuento de la fecha de pension  
+  
+  mutate( FACT_DESC_PEN = (v_nom ^ TIEMPO_PARA_PENSION) )
 
 # Función que calcula la pensión para un trabajador
 
-
-valor_Presente_Pension = function(x,tablaAct){
-  costo_Pension_Anual <- function(r){
-    return(12 * axn(tablaAct, x = x, n = 1, m = r, k = 12) * (1 + inflacion) ^ r)
+valor_Presente_Pension = function(x,sexo){
+  
+  if(sexo == "M"){
+    tablaAct = tablaActH  
+  }else{
+    tablaAct = tablaActM
   }
-    return( sum( Vectorize(costo_Pension_Anual)(0:(w-(x) ))))
+  
+  costo_Pension_Anual <- function(r){
+    return( (12 * axn( tablaAct, x = x, n = 1, m = r, k = 12) + (tasa_interes_nominal/log(1 + tasa_interes_nominal)) * axn(tablaAct, x = x, m = r, k = 1, payment = "immediate")) * (1 + inflacion) ^ r)
+  }
+    return( sum( Vectorize(costo_Pension_Anual)(0:(w-(x))) ) )
 }
 
-# Valor presente de una pensión de un hombre de 65 años
+val_Pres_Trab_Hom_No_Jub = valor_Presente_Pension(65, "M")
 
-val_Pres_Trab_Hom_No_Jub = valor_Presente_Pension(65, tablaActH)
+val_Pres_Trab_Muj_No_Jub = valor_Presente_Pension(65, "F")
+
+
+valor_Presente_Pension_2 = function(x,sexo){
+  if(x >= 65){
+    return(valor_Presente_Pension(x,sexo))
+  }else{
+      if(sexo == "M"){
+      return(val_Pres_Trab_Hom_No_Jub) 
+    }else{
+      return(val_Pres_Trab_Muj_No_Jub)
+    }
+  }
+}
+
+VP_SEG_FUN_65_HOM = Axn( tablaActH, x = 65, i = tablaActH@interest)
+
+VP_SEG_FUN_65_MUJ = Axn( tablaActM, x = 65, i = tablaActM@interest)
+
+
+valor_Presente_Seguro_Fun = function(x,sexo){
+  if(x >= 65){
+    if(sexo == "M"){
+      return(Axn( tablaActH, x, i = tablaActH@interest))
+    }else{
+      return(Axn( tablaActM, x, i = tablaActM@interest))
+    }
+  }else{
+    if(sexo == "M"){
+      return(VP_SEG_FUN_65_HOM)
+    }else{
+      return(VP_SEG_FUN_65_MUJ)
+    }
+  }
+}
+
+
+  # Valor presente de una pensión de un hombre de 65 años
 
 # Monto de seguro de gastos funerarios
 
 seg_Fun = 1000000
 
-trabajadores <- trabajadores %>% 
-  
+trabajadores_MUJ <- trabajadores %>% filter(SEXO == "F") 
+trabajadores_HOM <- trabajadores %>% filter(SEXO == "M") 
+
+edad_trab_MUJ <- trabajadores_MUJ$EDAD
+edad_trab_HOM <- trabajadores_HOM$EDAD
+
+tiempo_para_pension_MUJ <- trabajadores_MUJ$TIEMPO_PARA_PENSION
+tiempo_para_pension_HOM <- trabajadores_HOM$TIEMPO_PARA_PENSION
+
+prob_65_Hom = pxt(tablaActH, x = edad_trab_HOM, t = tiempo_para_pension_HOM)
+prob_65_Muj = pxt(tablaActM, x = edad_trab_MUJ, t = tiempo_para_pension_MUJ)
+
+vP_PENSION_TRAB_HOM = Vectorize(valor_Presente_Pension_2)(edad_trab_HOM,  "M")
+vP_PENSION_TRAB_MUJ = Vectorize(valor_Presente_Pension_2)(edad_trab_MUJ,  "F")
+
+VP_SEG_FUN_HOM = seg_Fun * Vectorize(valor_Presente_Seguro_Fun)(edad_trab_HOM, "M")
+VP_SEG_FUN_MUJ = seg_Fun * Vectorize(valor_Presente_Seguro_Fun)(edad_trab_MUJ, "F")
+
 # Valor presente de la pensión 
-  
-  mutate( VP_Pension = (v_nom ^ TIEMPO_PARA_PENSION) * 
-            (pxt(object = tablaActH, x = EDAD, t = TIEMPO_PARA_PENSION)) *
-            valor_Presente_Pension( 
-              ifelse( TIEMPO_PARA_PENSION == 0, EDAD, 65), 
-              ifelse( SEXO == M, tablaActH, tablaActM) ) * 
-            SALARIO_PENSION * PORC_SAL_PENS)  %>%
+trabajadores_HOM <- trabajadores_HOM %>% 
+  mutate( VP_PENSION =  (v_nom ^ TIEMPO_PARA_PENSION) * prob_65_Hom * vP_PENSION_TRAB_HOM)
+
+trabajadores_MUJ <- trabajadores_MUJ %>% 
+  mutate( VP_PENSION =  (v_nom ^ TIEMPO_PARA_PENSION) * prob_65_Muj * vP_PENSION_TRAB_MUJ)
 
 # Valor presente del capital de retiro  
-    
-  mutate( VP_CAP_RET = (v_nom ^ TIEMPO_PARA_PENSION) * 
-            (pxt(object = tablaActH, x = EDAD, t = TIEMPO_PARA_PENSION)) *
-            SALARIO_PENSION *
-            NUM_SAL_CAP_RET ) %>%
 
-# Valor presente del seguro de gastos funerarios
-  
-  mutate( VP_SEG_FUN = seg_Fun * 
-            (v_nom ^ TIEMPO_PARA_PENSION) * 
-            pxt(object = tablaActH, x = EDAD, t = TIEMPO_PARA_PENSION)*
-            Axn(actuarialtable = ifelse( SEXO == M, tablaActH, tablaActM),
-                x = EDAD,
-                n = ) )
+trabajadores_MUJ <- trabajadores_MUJ %>% 
+  mutate( VP_CAP_RET = (v_nom ^ TIEMPO_PARA_PENSION) * prob_65_Muj * SALARIO_PENSION ) 
 
+trabajadores_HOM <- trabajadores_HOM %>% 
+  mutate( VP_CAP_RET = (v_nom ^ TIEMPO_PARA_PENSION) * prob_65_Hom * SALARIO_PENSION ) 
+# Valor presente y Valor Futuro del seguro de gastos funerarios
+trabajadores_MUJ <- trabajadores_MUJ %>% 
+  mutate( VP_SEG_FUN = (v_nom ^ TIEMPO_PARA_PENSION) * prob_65_Muj * VP_SEG_FUN_MUJ)
+
+trabajadores_HOM <- trabajadores_HOM %>% 
+  mutate( VP_SEG_FUN = (v_nom ^ TIEMPO_PARA_PENSION) * prob_65_Hom * VP_SEG_FUN_HOM)
+
+costo_Plan_Trab = sum(trabajadores_MUJ$VP_PENSION, trabajadores_MUJ$VP_CAP_RET, trabajadores_MUJ$VP_SEG_FUN, trabajadores_HOM$VP_PENSION, trabajadores_HOM$VP_CAP_RET, trabajadores_HOM$VP_SEG_FUN)
 
 ```
