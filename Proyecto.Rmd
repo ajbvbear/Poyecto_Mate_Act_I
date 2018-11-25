@@ -115,7 +115,7 @@ trabajadores <- trabajadores %>%
   
 # Calcula el salario sobre el cual se va a calcular la pensión.
 
-  mutate( SALARIO_PENSION = SALARIO*(tasa_crec_salarios_nom) ^ (year(FEC_PENSION) - 2017)) %>% 
+  mutate( SALARIO_PENSION = SALARIO*(1+tasa_crec_salarios_nom) ^ (year(FEC_PENSION) - 2017)) %>% 
   
 # Calcula el tiempo restante para que la persona se pensione  
   
@@ -144,7 +144,7 @@ valor_Presente_Pension = function(x,sexo){
   }
   
   costo_Pension_Anual <- function(r){
-    return( (12 * axn( tablaAct, x = x, n = 1, m = r, k = 12) + (tasa_interes_nominal/log(1 + tasa_interes_nominal)) * axn(tablaAct, x = x, m = r, k = 1, payment = "immediate")) * (1 + inflacion) ^ r)
+    return( (12 * axn( tablaAct, x = x, n = 1, m = r, k = 12) + axn(tablaAct, x = x, m = r, k = 1, payment = "immediate")) * (1 + inflacion) ^ r)
   }
     return( sum( Vectorize(costo_Pension_Anual)(0:(w-(x))) ) )
 }
@@ -166,17 +166,17 @@ valor_Presente_Pension_2 = function(x,sexo){
   }
 }
 
-VP_SEG_FUN_65_HOM = Axn( tablaActH, x = 65, i = tablaActH@interest)
+VP_SEG_FUN_65_HOM = (tasa_interes_nominal/log(1 + tasa_interes_nominal)) *  Axn( tablaActH, x = 65, i = tablaActH@interest)
 
-VP_SEG_FUN_65_MUJ = Axn( tablaActM, x = 65, i = tablaActM@interest)
+VP_SEG_FUN_65_MUJ = (tasa_interes_nominal/log(1 + tasa_interes_nominal)) *  Axn( tablaActM, x = 65, i = tablaActM@interest)
 
 
 valor_Presente_Seguro_Fun = function(x,sexo){
   if(x >= 65){
     if(sexo == "M"){
-      return(Axn( tablaActH, x, i = tablaActH@interest))
+      return((tasa_interes_nominal/log(1 + tasa_interes_nominal)) *  Axn( tablaActH, x, i = tablaActH@interest))
     }else{
-      return(Axn( tablaActM, x, i = tablaActM@interest))
+      return((tasa_interes_nominal/log(1 + tasa_interes_nominal)) * Axn( tablaActM, x, i = tablaActM@interest))
     }
   }else{
     if(sexo == "M"){
@@ -214,10 +214,10 @@ VP_SEG_FUN_MUJ = seg_Fun * Vectorize(valor_Presente_Seguro_Fun)(edad_trab_MUJ, "
 
 # Valor presente de la pensión 
 trabajadores_HOM <- trabajadores_HOM %>% 
-  mutate( VP_PENSION =  (v_nom ^ TIEMPO_PARA_PENSION) * prob_65_Hom * vP_PENSION_TRAB_HOM)
+  mutate( VP_PENSION =  (v_nom ^ TIEMPO_PARA_PENSION) * prob_65_Hom * vP_PENSION_TRAB_HOM * SALARIO_PENSION)
 
 trabajadores_MUJ <- trabajadores_MUJ %>% 
-  mutate( VP_PENSION =  (v_nom ^ TIEMPO_PARA_PENSION) * prob_65_Muj * vP_PENSION_TRAB_MUJ)
+  mutate( VP_PENSION =  (v_nom ^ TIEMPO_PARA_PENSION) * prob_65_Muj * vP_PENSION_TRAB_MUJ * SALARIO_PENSION)
 
 # Valor presente del capital de retiro  
 
@@ -226,7 +226,9 @@ trabajadores_MUJ <- trabajadores_MUJ %>%
 
 trabajadores_HOM <- trabajadores_HOM %>% 
   mutate( VP_CAP_RET = (v_nom ^ TIEMPO_PARA_PENSION) * prob_65_Hom * SALARIO_PENSION ) 
+  
 # Valor presente y Valor Futuro del seguro de gastos funerarios
+
 trabajadores_MUJ <- trabajadores_MUJ %>% 
   mutate( VP_SEG_FUN = (v_nom ^ TIEMPO_PARA_PENSION) * prob_65_Muj * VP_SEG_FUN_MUJ)
 
@@ -235,4 +237,30 @@ trabajadores_HOM <- trabajadores_HOM %>%
 
 costo_Plan_Trab = sum(trabajadores_MUJ$VP_PENSION, trabajadores_MUJ$VP_CAP_RET, trabajadores_MUJ$VP_SEG_FUN, trabajadores_HOM$VP_PENSION, trabajadores_HOM$VP_CAP_RET, trabajadores_HOM$VP_SEG_FUN)
 
+jubilados <- jubilados %>%
+    mutate( EDAD = time_length(interval(FEC_NAC, hoy), unit = "year") )
+
+jubilados_MUJ <- jubilados %>% filter(SEX == "F") 
+jubilados_HOM <- jubilados %>% filter(SEX == "M") 
+
+jubilados_HOM <- jubilados_HOM %>% mutate(VP_PENSION_JUB = jubilados_HOM$`MON_PEN Ordinaria` * Vectorize(valor_Presente_Pension_2)(jubilados_HOM$EDAD,"M"))
+
+jubilados_MUJ <- jubilados_MUJ %>% mutate(VP_PENSION_JUB = jubilados_MUJ$`MON_PEN Ordinaria` * Vectorize(valor_Presente_Pension_2)(jubilados_MUJ$EDAD,"F"))
+
+jubilados_HOM <- jubilados_HOM %>% mutate(VP_SEG_FUN_JUB = seg_Fun *  Vectorize(valor_Presente_Seguro_Fun)(jubilados_HOM$EDAD,"M") )
+
+jubilados_MUJ <- jubilados_MUJ %>% mutate(VP_SEG_FUN_JUB = seg_Fun * Vectorize(valor_Presente_Seguro_Fun)(jubilados_MUJ$EDAD,"F") )
+
+costo_Plan_Jub <- sum(jubilados_MUJ$VP_PENSION_JUB, jubilados_MUJ$VP_SEG_FUN_JUB, jubilados_HOM$VP_PENSION_JUB, jubilados_HOM$VP_SEG_FUN_JUB)
+
+costoPlan = costo_Plan_Jub + costo_Plan_Trab
+
 ```
+
+
+
+```{r}
+
+```
+  
+  
