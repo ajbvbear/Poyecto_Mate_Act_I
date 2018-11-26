@@ -78,6 +78,8 @@ k = which(as.numeric(is.na(trabajadores$FEC_PENSION)) == 1)
 
 trabajadores$FEC_PENSION[k] = as.Date(paste0(as.character( as.numeric(format(trabajadores$FEC_NAC[k],"%Y")) + 65),"-02-28" ))
 
+#calcular_Costo_Plan = function(tasa_interes_nominal, tasa_crec_salarios_nom) {
+
 # Convierte los datos de mortalidad en un objeto tipo actuarialtable
 
 tablaVidaH = probs2lifetable(mortalidad$Hombres, radix = 10000, type = "qx")
@@ -119,7 +121,7 @@ trabajadores <- trabajadores %>%
   
 # Calcula el tiempo restante para que la persona se pensione  
   
-  mutate( TIEMPO_PARA_PENSION = year(FEC_PENSION) - 2018 + ((month(FEC_PENSION)-1)/12 + day(FEC_PENSION)/365)) %>%
+  mutate( TIEMPO_PARA_PENSION = time_length(interval(hoy,FEC_PENSION), unit = "year")) %>%
   
 # Corrige el tiempor para pensión de los trabajadores que no se han pensionado
     
@@ -148,6 +150,27 @@ valor_Presente_Pension = function(x,sexo){
   }
     return( sum( Vectorize(costo_Pension_Anual)(0:(w-(x))) ) )
 }
+
+valor_Presente_Pension_3 = function(x,sexo){
+    if(sexo == "M"){
+      tablaVida = tablaVidaH  
+    }else{
+      tablaVida = tablaVidaM
+    }
+  
+  pago = function(x, m){
+      return(pxt(tablaVida, x, m/12) * 
+               (1/(1 + tasa_interes_nominal))^(m/12))
+  }
+  
+  anualidad_diferida = function(x,k){
+    return(sum(Vectorize(pago)(x+k, 0:11),pago(x+k,11)) * pxt(tablaVida, x, k) * 
+             ( 1/(1 + tasa_interes_real))^(k) )
+  }
+  
+  return(sum(Vectorize(anualidad_diferida)(x, (0:(w-x)) )) )
+}
+
 
 val_Pres_Trab_Hom_No_Jub = valor_Presente_Pension(65, "M")
 
@@ -255,11 +278,19 @@ costo_Plan_Jub <- sum(jubilados_MUJ$VP_PENSION_JUB, jubilados_MUJ$VP_SEG_FUN_JUB
 
 costoPlan = costo_Plan_Jub + costo_Plan_Trab
 
+#return(costoPlan)
+#}
+
+#costo_Plan_Basico = calcular_Costo_Plan(tasa_interes_nominal, tasa_crec_salarios_nom)
+
+
 ```
 
-
+# Estocástico. 
 
 ```{r}
+
+
 
 ```
   
