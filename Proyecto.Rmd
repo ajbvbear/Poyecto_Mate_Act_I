@@ -19,7 +19,6 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # here = "C:/Users/Humberto/Downloads/Poyecto_Mate_Act_I-master"
 
-
 library(lubridate)
 library(lifecontingencies)
 library(dplyr)
@@ -52,31 +51,56 @@ tasa_crec_salarios_real = 0.02
 
 tasa_crec_salarios_nom = ((1+inflacion)*(1+tasa_crec_salarios_real)) - 1
 
-# Tasa de descuento real
-
-tasa_desc_real = 0.03
-
 # Tasa de interes real
 
-tasa_interes_real =  (1/(1-tasa_desc_real)) - 1
-
+tasa_interes_real =  0.03
+  
 # Tasa de interes nominal
 
 tasa_interes_nominal = ((1+inflacion)*(1+tasa_interes_real)) - 1
 
 # Cambia el formato de las fechas a objetos .Date
 
-trabajadores <- dplyr::mutate(trabajadores, FEC_INGRESO = as.Date(FEC_INGRESO, format = "%d-%m-%y"))
+trabajadores <- trabajadores %>%   
+  mutate( FEC_INGRESO = as.Date(FEC_INGRESO, format = "%d-%m-%y")) %>%
 
-trabajadores <- dplyr::mutate(trabajadores, FEC_NAC = as.Date(FEC_NAC,  format = "%d-%m-%y"))
+  mutate( FEC_NAC = as.Date(FEC_NAC,  format = "%d-%m-%y"))  %>%
+
+  mutate( SEXO_NUM = ifelse(SEXO == "M", 0, 1))  %>%
 
 # Calcula la fecha a partir de la cual puede pensionarse
 
-trabajadores <- dplyr::mutate(trabajadores, FEC_PENSION = as.Date( paste0( as.character( as.numeric(format(FEC_NAC,"%Y")) + 65), format(FEC_NAC,"-%m-%d"))) )
+  mutate(FEC_PENSION = as.Date( paste0( as.character( as.numeric(format(FEC_NAC,"%Y")) + 65), format(FEC_NAC,"-%m-%d"))) )
 
 k = which(as.numeric(is.na(trabajadores$FEC_PENSION)) == 1)
 
 trabajadores$FEC_PENSION[k] = as.Date(paste0(as.character( as.numeric(format(trabajadores$FEC_NAC[k],"%Y")) + 65),"-02-28" ))
+
+# Calcula la edad actual del trabajador
+trabajadores <- trabajadores %>%  
+  mutate( EDAD = time_length(interval(FEC_NAC, hoy), unit = "year") ) %>% 
+  # Calcula la antiguedad de los trabajadores
+  
+  mutate(ANTIGUEDAD = year(FEC_PENSION) + month(FEC_PENSION) / 12 + day(FEC_PENSION) / 365 - year(FEC_INGRESO) - month(FEC_INGRESO) /12 - day(FEC_INGRESO) / 365) %>% 
+  
+# Categoriza a los empleados según su antiguedad
+  
+  mutate( CATEG = ifelse(ANTIGUEDAD < 10, 1, ifelse(ANTIGUEDAD < 20, 2, ifelse(ANTIGUEDAD < 30, 3, 4)))) %>%
+
+# Asigna a los empleados su porcentaje del salario según su antiguedad
+  
+  mutate( PORC_SAL_PENS = (ifelse(ANTIGUEDAD < 10, 4, ifelse(ANTIGUEDAD < 20, 5, ifelse(ANTIGUEDAD < 30, 6, 7))))/10) %>%
+
+# Asigna el número de salarios para el capital de retiro según su antiguedad
+  
+  mutate( NUM_SAL_CAP_RET = ifelse(ANTIGUEDAD < 10, 2, ifelse(ANTIGUEDAD < 20, 3, ifelse(ANTIGUEDAD < 30, 4, 5)))) 
+
+# Calcula la edad actual de los jubilados
+
+jubilados <- jubilados %>%
+    mutate( EDAD = time_length(interval(FEC_NAC, hoy), unit = "year") )
+
+seg_Fun = 1000000
 
 #calcular_Costo_Plan = function(tasa_interes_nominal, tasa_crec_salarios_nom) {
 
@@ -98,23 +122,6 @@ v_nom = 1/(1 + tasa_interes_nominal)
   
 trabajadores <- trabajadores %>%
   
-# Calcula la antiguedad de los trabajadores
-  
-  mutate(ANTIGUEDAD = year(FEC_PENSION) + month(FEC_PENSION) / 12 + day(FEC_PENSION) / 365 - year(FEC_INGRESO) - month(FEC_INGRESO) /12 - day(FEC_INGRESO) / 365) %>% 
-  
-# Categoriza a los empleados según su antiguedad
-  
-  mutate( CATEG = ifelse(ANTIGUEDAD < 10, 1, ifelse(ANTIGUEDAD < 20, 2, ifelse(ANTIGUEDAD < 30, 3, 4)))) %>%
-
-# Asigna a los empleados su porcentaje del salario según su antiguedad
-  
-  mutate( PORC_SAL_PENS = ifelse(ANTIGUEDAD < 10, 1, ifelse(ANTIGUEDAD < 20, 2, ifelse(ANTIGUEDAD < 30, 3, 4)))) %>%
-
-# Asigna el número de salarios para el capital de retiro según su antiguedad
-  
-  mutate( NUM_SAL_CAP_RET = ifelse(ANTIGUEDAD < 10, 1, ifelse(ANTIGUEDAD < 20, 2, ifelse(ANTIGUEDAD < 30, 3, 4)))) %>%
-  
-  
 # Calcula el salario sobre el cual se va a calcular la pensión.
 
   mutate( SALARIO_PENSION = SALARIO*(1+tasa_crec_salarios_nom) ^ (year(FEC_PENSION) - 2017)) %>% 
@@ -127,9 +134,6 @@ trabajadores <- trabajadores %>%
     
   mutate( TIEMPO_PARA_PENSION = ifelse(TIEMPO_PARA_PENSION  > 0, TIEMPO_PARA_PENSION, 0)) %>%
   
-# Calcula la edad actural del trabajador
-  
-  mutate( EDAD = time_length(interval(FEC_NAC, hoy), unit = "year") ) %>%
 
 # Calcula el factor de descuento de la fecha de pension  
   
@@ -146,30 +150,47 @@ valor_Presente_Pension = function(x,sexo){
   }
   
   costo_Pension_Anual <- function(r){
-    return( (12 * axn( tablaAct, x = x, n = 1, m = r, k = 12) + axn(tablaAct, x = x, m = r, k = 1, payment = "immediate")) * (1 + inflacion) ^ r)
+    return( (12 * axn( tablaAct, x = x, n = 1, m = r, k = 12) + axn(tablaAct, x = x, n=1, m = r, k = 1, payment = "immediate")) * (1 + inflacion) ^ r)
   }
     return( sum( Vectorize(costo_Pension_Anual)(0:(w-(x))) ) )
 }
 
-valor_Presente_Pension_3 = function(x,sexo){
-    if(sexo == "M"){
-      tablaVida = tablaVidaH  
-    }else{
-      tablaVida = tablaVidaM
-    }
+valor_Presente_Salarios = function(x,sexo){
   
-  pago = function(x, m){
-      return(pxt(tablaVida, x, m/12) * 
-               (1/(1 + tasa_interes_nominal))^(m/12))
+  if(sexo == "M"){
+    tablaAct = tablaActH  
+  }else{
+    tablaAct = tablaActM
   }
   
-  anualidad_diferida = function(x,k){
-    return(sum(Vectorize(pago)(x+k, 0:11),pago(x+k,11)) * pxt(tablaVida, x, k) * 
-             ( 1/(1 + tasa_interes_real))^(k) )
+  costo_Salario_Anual <- function(r){
+    return( (12 * axn( tablaAct, x = x, n = 1, m = r, k = 12)) * (1 + tasa_crec_salarios_nom) ^ r)
   }
-  
-  return(sum(Vectorize(anualidad_diferida)(x, (0:(w-x)) )) )
+    return( sum( Vectorize(costo_Salario_Anual)(0:max(65-x, 0) ) ) )
 }
+
+
+# Función que calcula todo a pie
+
+# valor_Presente_Pension_3 = function(x,sexo){
+#     if(sexo == "M"){
+#       tablaVida = tablaVidaH  
+#     }else{
+#       tablaVida = tablaVidaM
+#     }
+#   
+#   pago = function(x, m){
+#       return(pxt(tablaVida, x, m/12) * 
+#                (1/(1 + tasa_interes_nominal))^(m/12))
+#   }
+#   
+#   anualidad_diferida = function(x,k){
+#     return(sum(Vectorize(pago)(x+k, 0:11),
+#                pago(x+k,11)) * pxt(tablaVida, x, k) * 
+#              ( 1/(1 + tasa_interes_real))^(k) )
+#   }
+#   return(sum(Vectorize(anualidad_diferida)(x, (0:(w-x)) )) )
+# }
 
 
 val_Pres_Trab_Hom_No_Jub = valor_Presente_Pension(65, "M")
@@ -215,8 +236,6 @@ valor_Presente_Seguro_Fun = function(x,sexo){
 
 # Monto de seguro de gastos funerarios
 
-seg_Fun = 1000000
-
 trabajadores_MUJ <- trabajadores %>% filter(SEXO == "F") 
 trabajadores_HOM <- trabajadores %>% filter(SEXO == "M") 
 
@@ -235,20 +254,30 @@ vP_PENSION_TRAB_MUJ = Vectorize(valor_Presente_Pension_2)(edad_trab_MUJ,  "F")
 VP_SEG_FUN_HOM = seg_Fun * Vectorize(valor_Presente_Seguro_Fun)(edad_trab_HOM, "M")
 VP_SEG_FUN_MUJ = seg_Fun * Vectorize(valor_Presente_Seguro_Fun)(edad_trab_MUJ, "F")
 
+# Valor presente de los salarios
+
+#trabajadores_MUJ <- trabajadores_MUJ %>% 
+#  mutate( VP_SAL = Vectorize(valor_Presente_Salarios)(trabajadores_MUJ$EDAD, "F")) 
+
+#trabajadores_HOM <- trabajadores_HOM %>% 
+#  mutate( VP_SAL = Vectorize(valor_Presente_Salarios)(trabajadores_HOM$EDAD, "M")) 
+
+#salarios = 0.15 * sum(trabajadores_HOM$VP_SAL*trabajadores_HOM$SALARIO, trabajadores_MUJ$VP_SAL*trabajadores_MUJ$SALARIO)
+
 # Valor presente de la pensión 
 trabajadores_HOM <- trabajadores_HOM %>% 
-  mutate( VP_PENSION =  (v_nom ^ TIEMPO_PARA_PENSION) * prob_65_Hom * vP_PENSION_TRAB_HOM * SALARIO_PENSION)
+  mutate( VP_PENSION =  (v_nom ^ TIEMPO_PARA_PENSION) * prob_65_Hom * vP_PENSION_TRAB_HOM * SALARIO_PENSION * PORC_SAL_PENS)
 
 trabajadores_MUJ <- trabajadores_MUJ %>% 
-  mutate( VP_PENSION =  (v_nom ^ TIEMPO_PARA_PENSION) * prob_65_Muj * vP_PENSION_TRAB_MUJ * SALARIO_PENSION)
+  mutate( VP_PENSION =  (v_nom ^ TIEMPO_PARA_PENSION) * prob_65_Muj * vP_PENSION_TRAB_MUJ * SALARIO_PENSION * PORC_SAL_PENS)
 
 # Valor presente del capital de retiro  
 
 trabajadores_MUJ <- trabajadores_MUJ %>% 
-  mutate( VP_CAP_RET = (v_nom ^ TIEMPO_PARA_PENSION) * prob_65_Muj * SALARIO_PENSION ) 
+  mutate( VP_CAP_RET = (v_nom ^ TIEMPO_PARA_PENSION) * prob_65_Muj * SALARIO_PENSION * NUM_SAL_CAP_RET) 
 
 trabajadores_HOM <- trabajadores_HOM %>% 
-  mutate( VP_CAP_RET = (v_nom ^ TIEMPO_PARA_PENSION) * prob_65_Hom * SALARIO_PENSION ) 
+  mutate( VP_CAP_RET = (v_nom ^ TIEMPO_PARA_PENSION) * prob_65_Hom * SALARIO_PENSION * NUM_SAL_CAP_RET) 
   
 # Valor presente y Valor Futuro del seguro de gastos funerarios
 
@@ -259,9 +288,6 @@ trabajadores_HOM <- trabajadores_HOM %>%
   mutate( VP_SEG_FUN = (v_nom ^ TIEMPO_PARA_PENSION) * prob_65_Hom * VP_SEG_FUN_HOM)
 
 costo_Plan_Trab = sum(trabajadores_MUJ$VP_PENSION, trabajadores_MUJ$VP_CAP_RET, trabajadores_MUJ$VP_SEG_FUN, trabajadores_HOM$VP_PENSION, trabajadores_HOM$VP_CAP_RET, trabajadores_HOM$VP_SEG_FUN)
-
-jubilados <- jubilados %>%
-    mutate( EDAD = time_length(interval(FEC_NAC, hoy), unit = "year") )
 
 jubilados_MUJ <- jubilados %>% filter(SEX == "F") 
 jubilados_HOM <- jubilados %>% filter(SEX == "M") 
@@ -278,10 +304,12 @@ costo_Plan_Jub <- sum(jubilados_MUJ$VP_PENSION_JUB, jubilados_MUJ$VP_SEG_FUN_JUB
 
 costoPlan = costo_Plan_Jub + costo_Plan_Trab
 
+ganancia = salarios/costoPlan * 100
 #return(costoPlan)
 #}
 
-#costo_Plan_Basico = calcular_Costo_Plan(tasa_interes_nominal, tasa_crec_salarios_nom)
+
+#osto_Plan_Basico = calcular_Costo_Plan(tasa_interes_nominal, tasa_crec_salarios_nom)
 
 
 ```
@@ -290,7 +318,136 @@ costoPlan = costo_Plan_Jub + costo_Plan_Trab
 
 ```{r}
 
+library(lifecontingencies)
 
+# Convierte los datos de mortalidad en un objeto tipo actuarialtable
+
+tablaVidaH = probs2lifetable(mortalidad$Hombres, radix = 10000, type = "qx")
+tablaActH = new("actuarialtable", i = tasa_interes_nominal, x = tablaVidaH@x, lx = tablaVidaH@lx)
+
+tablaVidaM = probs2lifetable(mortalidad$Mujeres, radix = 10000, type = "qx")
+tablaActM = new("actuarialtable", i = tasa_interes_nominal, x = tablaVidaM@x, lx = tablaVidaM@lx)
+
+
+
+
+matarVec = function(xVec, sexo){
+  if(sexo == "M"){
+    tablaVida = tablaVidaH  
+  }else{
+    tablaVida = tablaVidaM
+  }
+  
+  matar = function(x){
+    return(rLife(n = 1, object = tablaVida, x = x , k = 1, type = "Tx"))
+  }
+  
+  return(Vectorize(matar)(xVec))
+}
+
+trabajadores <- trabajadores %>%
+  
+# Calcula el tiempo restante para que la persona se pensione  
+  
+  mutate( TIEMPO_PARA_PENSION = time_length(interval(hoy,FEC_PENSION), unit = "year")) %>%
+  
+# Corrige el tiempor para pensión de los trabajadores que no se han pensionado
+    
+  mutate( TIEMPO_PARA_PENSION = ifelse(TIEMPO_PARA_PENSION  > 0, TIEMPO_PARA_PENSION, 0))
+  
+
+simulacion = function(tasa_interes_nominal, tasa_crec_salarios_nom, i){
+  
+trabajadores <- trabajadores %>%
+  
+# Calcula el salario sobre el cual se va a calcular la pensión.
+
+  mutate( SALARIO_PENSION = SALARIO*(1+tasa_crec_salarios_nom) ^ (year(FEC_PENSION) - 2017)) %>% 
+  
+# Calcula el factor de descuento de la fecha de pension  
+  
+  mutate( FACT_DESC_PEN = ((1/(1+tasa_interes_nominal)) ^ TIEMPO_PARA_PENSION) )
+
+trabajadores_MUJ <- trabajadores %>% filter(SEXO == "F") 
+trabajadores_HOM <- trabajadores %>% filter(SEXO == "M") 
+cant_trab_H = length(trabajadores_HOM)
+cant_trab_M = length(trabajadores_MUJ)
+cant_jubi_H = length(jubilados_HOM)
+cant_jubi_M = length(jubilados_MUJ)
+
+jubilados_MUJ <- jubilados %>% filter(SEX == "F") 
+jubilados_HOM <- jubilados %>% filter(SEX == "M") 
+
+
+tiempo_sobrevivencia_trab_H = matarVec(trabajadores_HOM$EDAD,"M")
+tiempo_sobrevivencia_trab_M = matarVec(trabajadores_HOM$EDAD,"F")
+tiempo_sobrevivencia_jubi_H = matarVec(jubilados_HOM$EDAD,"M")
+tiempo_sobrevivencia_jubi_M = matarVec(jubilados_MUJ$EDAD,"F")
+
+lista_trab_H = list(c(trabajadores_HOM$EDAD, tiempo_sobrevivencia_trab_H))
+lista_jub_H = list(c(jubilados_HOM$EDAD, tiempo_sobrevivencia_jubi_H))
+
+lista_trab_M = list(c(trabajadores_MUJ$EDAD, tiempo_sobrevivencia_trab_M))
+lista_jub_M = list(c(jubilados_MUJ$EDAD, tiempo_sobrevivencia_jubi_M))
+
+
+costo_Pension_Anual <- function(r){
+  return( (12 * annuity(i = tasa_interes_nominal, n = 1, m = r, k = 12, type = "due") + annuity(i = tasa_interes_nominal, n = 1, m = r, k = 12, type = "immediate")) * (1 + inflacion) ^ r )
+}
+valor_Presente_Pension_65_Estoc = function(t){
+  return( sum( Vectorize(costo_Pension_Anual)(0:t)) )
+}
+  
+
+calcular_VP_Pension_Trab_Estoc =  function(lista,i){
+
+    info = matrix(unlist(lista),  ncol = 2)[i,]
+    
+  if(sum(info) <= 65){
+    return(0)
+  }else {
+    return(valor_Presente_Pension_65_Estoc( sum(info) - 65 ))
+  }
+}
+
+calcular_VP_Seg_Fun = function(lista,i){
+  info = matrix(unlist(lista),  ncol = 2)[i,]
+    
+  if(sum(info) <= 65){
+    return(0)
+  }else {
+    return(seg_Fun * (1/(1+tasa_interes_nominal))^info[2] )
+  }
+}
+
+tiene_Cap_Ret = function(lista,i){
+  if(sum(info) <= 65){
+    return(0)
+  }else {
+    return(1)
+  }
+}
+
+VP_Pension_Y_Cap_Ret_Trab_Estoc = sum(((Vectorize(calcular_VP_Pension_Trab_Estoc)(lista_trab_H, 1:cant_trab_H) * trabajadores_HOM$PORC_SAL_PENS) + (Vectorize(tiene_Cap_Ret)(lista_trab_H, 1:cant_trab_H) * trabajadores_HOM$NUM_SAL_CAP_RET)) * trabajadores_HOM$FACT_DESC_PEN * trabajadores_HOM$SALARIO_PENSION) + 
+sum(((Vectorize(calcular_VP_Pension_Trab_Estoc)(lista_trab_M, 1:cant_trab_M) * trabajadores_MUJ$PORC_SAL_PENS) + (Vectorize(tiene_Cap_Ret)(lista_trab_M, 1:cant_trab_M) * trabajadores_MUJ$NUM_SAL_CAP_RET)) * trabajadores_MUJ$FACT_DESC_PEN * trabajadores_MUJ$SALARIO_PENSION)  
+
+VP_Seg_Fun_Trab_Estoc = sum(Vectorize(calcular_VP_Seg_Fun)(lista_trab_H, 1:cant_trab_H)) + sum(Vectorize(calcular_VP_Seg_Fun)(lista_trab_M, 1:cant_trab_M))
+
+VP_Pension_Jub_Estoc = sum(Vectorize(calcular_VP_Pension_Trab_Estoc)(lista_jub_H,1:cant_jubi_H) * jubilados_HOM$`MON_PEN Ordinaria`) +
+sum(Vectorize(calcular_VP_Pension_Trab_Estoc)(lista_jub_M,1:cant_jubi_M) * jubilados_MUJ$`MON_PEN Ordinaria`)
+
+VP_Seg_Fun_Jub_Estoc = sum(Vectorize(calcular_VP_Seg_Fun)(lista_jub_H, 1:cant_jubi_H)) + sum(Vectorize(calcular_VP_Seg_Fun)(lista_jub_M, 1:cant_jubi_M))
+
+costo_Plan_Estoc = sum(VP_Pension_Y_Cap_Ret_Trab_Estoc,
+                       VP_Seg_Fun_Trab_Estoc,
+                       VP_Pension_Jub_Estoc,
+                       VP_Seg_Fun_Jub_Estoc)
+
+
+return(costo_Plan_Estoc)
+}
+
+costo_Plan_Sim = mean(Vectorize(simulacion)(tasa_interes_nominal, tasa_crec_salarios_nom,1:100))
 
 ```
   
